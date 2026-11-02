@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computer Room: Smalltalk</title>
+<style>
+    html, body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+    }
+    canvas {
+        position: fixed;
+        background: #000;
+        cursor: default;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    canvas.pixelated {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+    }
+    #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font: 16px/1.4 monospace;
+        text-align: center;
+        pointer-events: none;
+    }
+    #sqSpinner {
+        display: none;
+    }
+    #filesButton, #filesPanel {
+        position: fixed;
+        right: 8px;
+        z-index: 10;
+        font: 12px/1.4 monospace;
+        color: #000;
+        background: #fff;
+        border: 1px solid #000;
+    }
+    #filesButton {
+        bottom: 8px;
+        padding: 2px 8px;
+        cursor: pointer;
+        opacity: 0.5;
+    }
+    #filesButton:hover {
+        opacity: 1;
+    }
+    #filesPanel {
+        bottom: 36px;
+        min-width: 260px;
+        max-height: 60vh;
+        overflow: auto;
+        padding: 6px 10px;
+        display: none;
+    }
+    #filesPanel a {
+        display: block;
+        color: #000;
+    }
+</style>
+<script src="squeak_bundle.js"></script>
+<script>
+    window.onload = function() {
+        SqueakJS.runSqueak("squeak/Squeak1.1.image", sqCanvas, {
+            appName: "Computer Room",
+            // The first visit downloads these files into the student's browser; after that
+            // they load from there, and "save" in Smalltalk writes the image back there.
+            files:["Squeak1.1.image", "Squeak1.1.changes", "SqueakV1.sources"],
+            // Left = red (select), right = yellow (do it / accept), cmd/option-click = blue (window menu)
+            swapButtons: true,
+            fixedWidth: 1024,
+            fixedHeight: 768,
+            pixelated: true,
+            spinner: sqSpinner,
+            onStart: function() { loading.remove(); },
+        });
+    };
+
+    // Files that Smalltalk writes (fileOuts, saved images) stay inside the browser.
+    // This panel lists them and downloads a copy to the computer.
+    function toggleFiles() {
+        if (filesPanel.style.display === "block") {
+            filesPanel.style.display = "none";
+            return;
+        }
+        filesPanel.textContent = "click a file to download it:";
+        var entries = Squeak.dirList("/") || {};
+        Object.keys(entries).sort().forEach(function(name) {
+            var entry = entries[name];
+            if (entry[3]) return; // skip directories
+            var link = document.createElement("a");
+            link.href = "#";
+            link.textContent = name + "  (" + Math.round(entry[4] / 1024) + " KB)";
+            link.onclick = function(evt) {
+                evt.preventDefault();
+                Squeak.fileGet("/" + name, function(data) {
+                    var url = URL.createObjectURL(new Blob([data]));
+                    var a = document.createElement("a");
+                    a.href = url;
+                    a.download = name;
+                    a.click();
+                    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+                });
+            };
+            filesPanel.appendChild(link);
+        });
+        filesPanel.style.display = "block";
+    }
+</script>
+</head>
+<body>
+    <div id="loading">loading Smalltalk&hellip;<br>(about 4&nbsp;MB, only the first time)</div>
+    <canvas id="sqCanvas"></canvas>
+    <div id="sqSpinner"><div></div></div>
+    <div id="filesPanel"></div>
+    <button id="filesButton" onclick="toggleFiles()">files</button>
+</body>
+</html>
