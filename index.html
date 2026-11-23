@@ -81,9 +81,65 @@
             fixedHeight: 768,
             pixelated: true,
             spinner: sqSpinner,
-            onStart: function() { loading.remove(); },
+            onStart: function(vm, display) { loading.remove(); fixLineBreaks(display); fixKeys(display); },
         });
     };
+
+    // Squeak ends lines with CR, everything else with LF. Without this, pasted code
+    // arrives as one long line, and code copied out loses its line breaks.
+    function fixLineBreaks(display) {
+        var toSqueak = function(text) { return text.replace(/\r\n?|\n/g, "\r"); };
+        var fromSqueak = function(text) { return text.replace(/\r/g, "\n"); };
+        var paste = display.executeClipboardPasteKey;
+        display.executeClipboardPasteKey = function(text, time) { return paste(toSqueak(text), time); };
+        var copy = display.executeClipboardCopyKey;
+        display.executeClipboardCopyKey = function(key, time) {
+            var text = copy(key, time);
+            return typeof text === "string" ? fromSqueak(text) : text;
+        };
+        // paste and copy from Squeak's own menu
+        var read = display.readFromSystemClipboard;
+        if (read) display.readFromSystemClipboard = function() {
+            var reading = read();
+            return reading && reading.then(function() { display.clipboardString = toSqueak(display.clipboardString); });
+        };
+        var write = display.writeToSystemClipboard;
+        if (write) display.writeToSystemClipboard = function() {
+            var text = display.clipboardString;
+            display.clipboardString = fromSqueak(text);
+            var writing = write();
+            display.clipboardString = text;
+            return writing;
+        };
+    }
+
+    function fixKeys(display) {
+        var input = sqCanvas.parentElement.querySelector("input");
+        var keydown = input.onkeydown, keyup = input.onkeyup, pending;
+        // Windows and Linux: Ctrl does what Cmd does on a Mac (Ctrl+V, Ctrl+A, Ctrl+D).
+        // AltGr arrives as Ctrl+Alt and stays untouched, it types [ ] | on German keyboards.
+        var ctrlIsCmd = !display.isMac;
+        display.isMac = true;
+        function translate(evt) {
+            if (!ctrlIsCmd) return evt;
+            return new Proxy(evt, { get: function(target, name) {
+                if (name === "metaKey") return target.ctrlKey && !target.altKey;
+                if (name === "ctrlKey") return false;
+                var value = target[name];
+                return typeof value === "function" ? value.bind(target) : value;
+            } });
+        }
+        input.onkeydown = function(evt) {
+            clearTimeout(pending);
+            return keydown.call(input, translate(evt));
+        };
+        // Squeak looks at the Cmd key a moment after the letter arrives. Letting go
+        // quickly made Cmd+V type a "v", so the release is passed on a little later.
+        input.onkeyup = function(evt) {
+            clearTimeout(pending);
+            pending = setTimeout(function() { keyup.call(input, translate(evt)); }, 200);
+        };
+    }
 
     // Files that Smalltalk writes (fileOuts, saved images) stay inside the browser.
     // This panel lists them and downloads a copy to the computer.
